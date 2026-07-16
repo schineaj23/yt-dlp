@@ -22,6 +22,7 @@ from ..utils import (
     urlhandle_detect_ext,
 )
 from ..utils.traversal import traverse_obj
+from ..postprocessor.widevine import WidevineDecryptPP
 
 
 class SoundcloudEmbedIE(InfoExtractor):
@@ -88,6 +89,7 @@ class SoundcloudBaseIE(InfoExtractor):
     _API_AUTH_QUERY_TEMPLATE = '?client_id=%s'
     _API_AUTH_URL_PW = 'https://api-auth.soundcloud.com/web-auth/sign-in/password%s'
     _API_VERIFY_AUTH_TOKEN = 'https://api-auth.soundcloud.com/connect/session%s'
+    _LICENSE_URL = 'https://license.media-streaming.soundcloud.cloud/playback/widevine'
     _HEADERS = {}
 
     _IMAGE_REPL_RE = r'-[0-9a-z]+\.(?P<ext>jpg|png)'
@@ -306,8 +308,12 @@ class SoundcloudBaseIE(InfoExtractor):
             preset_base = preset.partition('_')[0]
 
             protocol = traverse_obj(t, ('format', 'protocol', {str})) or 'http'
-            if protocol.startswith(('ctr-', 'cbc-')):
+            if protocol == 'ctr-encrypted-hls':
                 has_drm = True
+                protocol = 'hls'
+            if protocol.startswith('cbc-'):
+                has_drm = True
+                self.report_warning(f'Found unsupported DRM format: {protocol}', video_id=track_id)
                 continue
             if protocol == 'progressive':
                 protocol = 'http'
@@ -326,9 +332,11 @@ class SoundcloudBaseIE(InfoExtractor):
 
             # XXX: if not extract_flat, 429 error must be caught where _extract_info_dict is called
             try:
-                stream_url = traverse_obj(self._call_api(
+                resp = self._call_api(
                     format_url, track_id, f'Downloading {short_identifier} format info JSON',
-                    query=query, headers=self._HEADERS), ('url', {url_or_none}))
+                    query=query, headers=self._HEADERS)
+                stream_url = traverse_obj(resp, ('url', {url_or_none}))
+                license_auth_token = traverse_obj(resp, ('licenseAuthToken', {str_or_none}))
             except ExtractorError as e:
                 if isinstance(e.cause, HTTPError) and e.cause.status == 404:
                     self.report_warning(f'{short_identifier} format not found', video_id=track_id)
@@ -404,6 +412,8 @@ class SoundcloudBaseIE(InfoExtractor):
             'thumbnails': self._extract_thumbnails(info),
             'formats': formats if not extract_flat else None,
             '__post_extractor': self.extract_comments(track_id),
+            '_license_url': self._LICENSE_URL if has_drm else None,
+            '_license_auth_token': license_auth_token if has_drm else None,
         }
 
     @classmethod

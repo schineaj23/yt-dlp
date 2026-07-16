@@ -17,6 +17,7 @@ from ..utils import (
     urljoin,
 )
 from ..utils._utils import _request_dump_filename
+from ..postprocessor.widevine import WidevineDecryptPP
 
 
 class HlsFD(FragmentFD):
@@ -37,6 +38,15 @@ class HlsFD(FragmentFD):
             r'#EXT-X-FAXS-CM:',  # Adobe Flash Access
         )), manifest))
 
+    @classmethod
+    def _get_widevine_pssh(cls, manifest):
+        # FIXME: this only searches for PSSH in the manifest, but it can also be in the media segments themselves. This is what's needed for soundcloud
+        pssh = re.search(
+            r'#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,(?P<pssh>[^"]+)"',
+            manifest)
+        if pssh:
+            return binascii.a2b_base64(pssh.group('pssh'))
+    
     @classmethod
     def can_download(cls, manifest, info_dict, allow_unplayable_formats=False):
         UNSUPPORTED_FEATURES = [
@@ -111,6 +121,22 @@ class HlsFD(FragmentFD):
                 install_ffmpeg = '' if has_ffmpeg else 'install ffmpeg and '
                 message = ('Live HLS streams are not supported by the native downloader. If this is a livestream, '
                            f'please {install_ffmpeg}add "--downloader ffmpeg --hls-use-mpegts" to your command')
+            if self._has_drm(s):
+                pssh = self._get_widevine_pssh(s)
+                if not pssh:
+                    self.report_error('This format is DRM protected but could not get the PSSH; Please report this issue. ' + bug_reports_message())
+                    return False
+                pssh = binascii.b2a_base64(pssh).decode('utf-8').strip()
+                info_dict['__pssh'] = pssh
+                # NOTE: `info_dict` here is a copy made by YoutubeDL.dl() and is discarded once
+                # real_download() returns, so it can't be used to hand data to postprocessors
+                # that run later. Stash it on the shared YoutubeDL instance instead, keyed by
+                # video id, so WidevineDecryptPP can retrieve it after the download completes.
+                pssh_cache = getattr(self.ydl, '_drm_pssh_cache', None)
+                if pssh_cache is None:
+                    pssh_cache = self.ydl._drm_pssh_cache = {}
+                pssh_cache[info_dict.get('id')] = pssh
+                self.to_screen(f'[{self.FD_NAME}] Found DRM format: Widevine, PSSH: {pssh}')
         if not can_download:
             if self._has_drm(s) and not self.params.get('allow_unplayable_formats'):
                 if info_dict.get('has_drm') and self.params.get('test'):

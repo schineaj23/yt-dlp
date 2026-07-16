@@ -32,6 +32,7 @@ from .modify_chapters import ModifyChaptersPP
 from .movefilesafterdownload import MoveFilesAfterDownloadPP
 from .sponsorblock import SponsorBlockPP
 from .xattrpp import XAttrMetadataPP
+from .widevine import WidevineDecryptPP
 from ..globals import plugin_pps, postprocessors
 from ..plugins import PACKAGE_NAME, register_plugin_spec, PluginSpec
 from ..utils import deprecation_warning
