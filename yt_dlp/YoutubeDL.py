@@ -69,6 +69,7 @@ from .postprocessor import (
     FFmpegPostProcessor,
     FFmpegVideoConvertorPP,
     MoveFilesAfterDownloadPP,
+    WidevineDecryptPP,
     get_postprocessor,
 )
 from .postprocessor.ffmpeg import resolve_mapping as resolve_recode_mapping
@@ -3605,6 +3606,14 @@ class YoutubeDL:
 
             self._raise_pending_errors(info_dict)
             if success and full_filename != '-':
+                # Evil hack to ensure that the Widevine decryptor always is the first postprocessor to run.
+                # This would not be necessary if fixup, file conversions, etc. were registered as proper postprocessors 
+                # instead of being added to the additional postprocessor list in the middle of the download process. (:
+                for i, pp in enumerate(self._pps['post_process']):
+                    if isinstance(pp, WidevineDecryptPP):
+                        info_dict['__postprocessors'].append(pp)
+                        del self._pps['post_process'][i]
+                        break
 
                 def fixup():
                     do_fixup = True

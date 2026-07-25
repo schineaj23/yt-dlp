@@ -27,13 +27,11 @@ class WidevineDecryptPP(PostProcessor):
         self.write_debug(f'Widevine License Auth Token: {license_auth_token}')
 
         formats_to_decrypt = info.get('requested_formats') or [info]
-        delete_list = []
         for fmt in formats_to_decrypt:
             encrypted_filepath = fmt.get('filepath')
             if not encrypted_filepath:
                 self.report_warning(f'No filepath {encrypted_filepath} found for format {fmt.get("format")}, skipping decryption.')
                 continue
-            decrypted_filepath = encrypted_filepath.rsplit('.', 1)[0] + '_decrypted.' + fmt.get('ext')
             try:
                 self.write_debug(f'Attempting to decrypt {encrypted_filepath}')
                 pssh = PSSH(self.pssh)
@@ -44,14 +42,8 @@ class WidevineDecryptPP(PostProcessor):
                 license = requests.post(license_url, data=challenge)
                 license.raise_for_status()
                 cdm.parse_license(session_id, license.content)
-                try:
-                    cdm.decrypt(session_id, encrypted_filepath, decrypted_filepath)
-                    fmt['filepath'] = decrypted_filepath
-                except FileExistsError:
-                    self.report_warning(f'Decrypted file {decrypted_filepath} already exists, skipping decryption.')
-                finally:
-                    delete_list.append(encrypted_filepath)
-                    cdm.close(session_id)
+                cdm.decrypt(session_id, encrypted_filepath, encrypted_filepath, exists_ok=True)
+                cdm.close(session_id)
             except Exception as e:
                 raise PostProcessingError(f'Failed to decrypt fragment: {e}')
-        return delete_list, info
+        return [], info

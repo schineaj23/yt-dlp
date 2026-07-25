@@ -313,7 +313,6 @@ class SoundcloudBaseIE(InfoExtractor):
                 protocol = 'hls'
             if protocol.startswith('cbc-'):
                 has_drm = True
-                self.report_warning(f'Found unsupported DRM format: {protocol}', video_id=track_id)
                 continue
             if protocol == 'progressive':
                 protocol = 'http'

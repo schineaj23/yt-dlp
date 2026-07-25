@@ -125,7 +125,6 @@ class HlsFD(FragmentFD):
                     'Please provide a valid device path using the --widevine-device-path "/path/to/device.wvd" option.')
                 return False
             self.ydl.add_post_processor(WidevineDecryptPP(self.ydl, device=device_path, pssh=pssh))
-            # Since we have successfully added the WidevineDecryptPP postprocessor, we can proceed with the download
             can_download = True
         if can_download:
             has_ffmpeg = FFmpegFD.available()
