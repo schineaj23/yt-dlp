@@ -114,8 +114,9 @@ class HlsFD(FragmentFD):
             pssh = binascii.b2a_base64(pssh).decode('utf-8').strip()
             device_path = self.params.get('widevine_device_path')
             if device_path is None:
-                raise RuntimeError('Widevine decryption requires a device path to be specified. ' \
-                'Please provide a valid device path using the --widevine-device-path "/path/to/device.wvd" option.')
+                self.report_error('Widevine decryption requires a device path to be specified. ' \
+                    'Please provide a valid device path using the --widevine-device-path "/path/to/device.wvd" option.')
+                return False
             self.ydl.add_post_processor(WidevineDecryptPP(self.ydl, device=device_path, pssh=pssh))
             # Since we have successfully added the WidevineDecryptPP postprocessor, we can proceed with the download
             can_download = True
