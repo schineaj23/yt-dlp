@@ -102,6 +102,23 @@ class HlsFD(FragmentFD):
             s = s_bytes.decode('utf-8', 'ignore')
 
         can_download, message = self.can_download(s, info_dict, self.params.get('allow_unplayable_formats')), None
+        # Attempt to decrypt the stream if it is DRM protected with Widevine
+        if self._has_drm(s):
+            pssh = self._get_widevine_pssh(s)
+            if not pssh:
+                self.report_error('This format is DRM protected but could not get the PSSH; ' \
+                    'Please report this issue. ' + bug_reports_message())
+                return False
+            # Widevine has been detected, so we need to add the WidevineDecryptPP postprocessor to the list of postprocessors
+            # The device path is obtained from the postprocessor arguments, which should be provided by the user
+            pssh = binascii.b2a_base64(pssh).decode('utf-8').strip()
+            device_path = self.params.get('widevine_device_path')
+            if device_path is None:
+                raise RuntimeError('Widevine decryption requires a device path to be specified. ' \
+                'Please provide a valid device path using the --widevine-device-path "/path/to/device.wvd" option.')
+            self.ydl.add_post_processor(WidevineDecryptPP(self.ydl, device=device_path, pssh=pssh))
+            # Since we have successfully added the WidevineDecryptPP postprocessor, we can proceed with the download
+            can_download = True
         if can_download:
             has_ffmpeg = FFmpegFD.available()
             if not Cryptodome.AES and '#EXT-X-KEY:METHOD=AES-128' in s:
@@ -121,22 +138,6 @@ class HlsFD(FragmentFD):
                 install_ffmpeg = '' if has_ffmpeg else 'install ffmpeg and '
                 message = ('Live HLS streams are not supported by the native downloader. If this is a livestream, '
                            f'please {install_ffmpeg}add "--downloader ffmpeg --hls-use-mpegts" to your command')
-            if self._has_drm(s):
-                pssh = self._get_widevine_pssh(s)
-                if not pssh:
-                    self.report_error('This format is DRM protected but could not get the PSSH; Please report this issue. ' + bug_reports_message())
-                    return False
-                pssh = binascii.b2a_base64(pssh).decode('utf-8').strip()
-                info_dict['__pssh'] = pssh
-                # NOTE: `info_dict` here is a copy made by YoutubeDL.dl() and is discarded once
-                # real_download() returns, so it can't be used to hand data to postprocessors
-                # that run later. Stash it on the shared YoutubeDL instance instead, keyed by
-                # video id, so WidevineDecryptPP can retrieve it after the download completes.
-                pssh_cache = getattr(self.ydl, '_drm_pssh_cache', None)
-                if pssh_cache is None:
-                    pssh_cache = self.ydl._drm_pssh_cache = {}
-                pssh_cache[info_dict.get('id')] = pssh
-                self.to_screen(f'[{self.FD_NAME}] Found DRM format: Widevine, PSSH: {pssh}')
         if not can_download:
             if self._has_drm(s) and not self.params.get('allow_unplayable_formats'):
                 if info_dict.get('has_drm') and self.params.get('test'):

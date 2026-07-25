@@ -955,6 +955,7 @@ def parse_options(argv=None):
         'js_runtimes': js_runtimes,
         'remote_components': opts.remote_components,
         'warn_when_outdated': opts.update_self is None,
+        'widevine_device_path': opts.widevine_device_path,
         '_warnings': warnings,
         '_deprecation_warnings': deprecation_warnings,
         'compat_opts': opts.compat_opts,

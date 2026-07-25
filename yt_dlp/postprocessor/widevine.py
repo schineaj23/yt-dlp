@@ -6,30 +6,28 @@ from pywidevine.pssh import PSSH
 import requests
 
 class WidevineDecryptPP(PostProcessor):
-    def __init__(self, downloader, device=None):
+    def __init__(self, downloader, device=None, pssh=None):
         super().__init__(downloader)
         self.device_path = device
         if self.device_path is None:
-            raise PostProcessingError('Widevine decryption requires a device path to be specified. Please provide a valid device path.')
-
+            raise PostProcessingError('Widevine decryption requires a device path to be specified. ' \
+            'Please provide a valid device path.')
+        self.pssh = pssh
+        if self.pssh is None:
+            raise PostProcessingError('Widevine decryption requires a PSSH to be specified. ' \
+            'Please provide a valid PSSH.')
     def run(self, info):
-        self.report_warning('Widevine decryption is not fully supported yet. Please report any issues you encounter.')
-
-        # The PSSH is discovered by HlsFD while downloading segments, but the info_dict it
-        # sees is a throwaway copy (see YoutubeDL.dl()), so it can't set '__pssh' here directly.
-        # It's stashed instead on the shared YoutubeDL instance, keyed by video id.
-        pssh_cache = getattr(self._downloader, '_drm_pssh_cache', {})
-        pssh = pssh_cache.get(info.get('id')) or info.get('__pssh')
-        if pssh is None:
-            raise PostProcessingError('This format is DRM protected but could not get the PSSH; Perhaps the file is already downloaded')
+        self.report_warning('Widevine decryption is not fully supported yet. ' \
+        'Please report any issues you encounter.')
         license_url = info.get('_license_url')
         license_auth_token = info.get('_license_auth_token')
 
-        self.write_debug(f'Widevine PSSH: {pssh}')
+        self.write_debug(f'Widevine PSSH: {self.pssh}')
         self.write_debug(f'Widevine License URL: {license_url}')
         self.write_debug(f'Widevine License Auth Token: {license_auth_token}')
 
         formats_to_decrypt = info.get('requested_formats') or [info]
+        delete_list = []
         for fmt in formats_to_decrypt:
             encrypted_filepath = fmt.get('filepath')
             if not encrypted_filepath:
@@ -38,18 +36,20 @@ class WidevineDecryptPP(PostProcessor):
             decrypted_filepath = encrypted_filepath.rsplit('.', 1)[0] + '_decrypted.' + fmt.get('ext')
             try:
                 self.write_debug(f'Attempting to decrypt {encrypted_filepath}')
-                _pssh = PSSH(pssh)
+                pssh = PSSH(self.pssh)
                 device = Device.load(self.device_path)
                 cdm = Cdm.from_device(device)
                 session_id = cdm.open()
-                challenge = cdm.get_license_challenge(session_id, _pssh)
+                challenge = cdm.get_license_challenge(session_id, pssh)
                 license = requests.post(license_url, data=challenge)
                 license.raise_for_status()
                 cdm.parse_license(session_id, license.content)
-                cdm.decrypt(session_id, encrypted_filepath, decrypted_filepath)
-                fmt['filepath'] = decrypted_filepath
-                self._delete_downloaded_files(encrypted_filepath)
+                try:
+                    cdm.decrypt(session_id, encrypted_filepath, decrypted_filepath)
+                    fmt['filepath'] = decrypted_filepath
+                except FileExistsError:
+                    self.report_warning(f'Decrypted file {decrypted_filepath} already exists, skipping decryption.')
+                delete_list.append(encrypted_filepath)
             except Exception as e:
                 raise PostProcessingError(f'Failed to decrypt fragment: {e}')
-
-        return [], info
+        return delete_list, info

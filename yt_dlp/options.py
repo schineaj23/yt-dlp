@@ -1832,6 +1832,9 @@ def create_parser():
         '--no-force-keyframes-at-cuts',
         action='store_false', dest='force_keyframes_at_cuts',
         help='Do not force keyframes around the chapters when cutting/splitting (default)')
+    postproc.add_option(
+        '--widevine-device-path', dest='widevine_device_path', metavar='PATH',
+        help='Path to the Widevine device file to use for decryption. The file must be a .wvd Widevine Device file.')
     _postprocessor_opts_parser = lambda key, val='': (
         *(item.split('=', 1) for item in (val.split(';') if val else [])),
         ('key', remove_end(key, 'PP')))
