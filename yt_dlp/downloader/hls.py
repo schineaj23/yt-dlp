@@ -39,6 +39,13 @@ class HlsFD(FragmentFD):
         )), manifest))
 
     @classmethod
+    def _has_widevine_or_playready_drm(cls, manifest):
+        return bool(re.search('|'.join((
+            r'#EXT-X-(?:SESSION-)?KEY:.*?KEYFORMAT="com\.microsoft\.playready"',  # Microsoft PlayReady
+            r'#EXT-X-(?:SESSION-)?KEY:.*?KEYFORMAT="com\.youtube\.widevine"',  # Google Widevine
+        )), manifest))
+
+    @classmethod
     def _get_widevine_pssh(cls, manifest):
         # FIXME: this only searches for PSSH in the manifest, but it can also be in the media segments themselves. This is what's needed for soundcloud
         pssh = re.search(
@@ -103,7 +110,7 @@ class HlsFD(FragmentFD):
 
         can_download, message = self.can_download(s, info_dict, self.params.get('allow_unplayable_formats')), None
         # Attempt to decrypt the stream if it is DRM protected with Widevine
-        if self._has_drm(s):
+        if self._has_widevine_or_playready_drm(s):
             pssh = self._get_widevine_pssh(s)
             if not pssh:
                 self.report_error('This format is DRM protected but could not get the PSSH; ' \

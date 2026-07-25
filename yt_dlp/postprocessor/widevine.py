@@ -49,7 +49,9 @@ class WidevineDecryptPP(PostProcessor):
                     fmt['filepath'] = decrypted_filepath
                 except FileExistsError:
                     self.report_warning(f'Decrypted file {decrypted_filepath} already exists, skipping decryption.')
-                delete_list.append(encrypted_filepath)
+                finally:
+                    delete_list.append(encrypted_filepath)
+                    cdm.close(session_id)
             except Exception as e:
                 raise PostProcessingError(f'Failed to decrypt fragment: {e}')
         return delete_list, info
